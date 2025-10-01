@@ -1,7 +1,7 @@
 import Cocoa
 import WebKit
 
-class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate {
 		var window: NSWindow!
 		var webView: WKWebView!
 
@@ -41,6 +41,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigati
 				webView = WKWebView(frame: window.contentView!.bounds, configuration: webConfig)
 				webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
 				webView.navigationDelegate = self
+				webView.uiDelegate = self
 				webView.autoresizingMask = [.width, .height]
 				window.contentView?.addSubview(webView)
 
@@ -80,7 +81,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigati
 
 				NSApp.mainMenu = mainMenu
 		}
-
 
 		// MARK: - Aktionen
 		@objc func openCompose() {
@@ -127,6 +127,25 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigati
 						// Alle anderen Links im Standardbrowser öffnen
 						NSWorkspace.shared.open(url)
 						decisionHandler(.cancel)
+				}
+		}
+
+		// MARK: - UI Delegate für File Upload
+		func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters, 
+								 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping ([URL]?) -> Void) {
+				
+				let openPanel = NSOpenPanel()
+				openPanel.allowsMultipleSelection = parameters.allowsMultipleSelection
+				openPanel.canChooseDirectories = false
+				openPanel.canChooseFiles = true
+				openPanel.allowedContentTypes = [.image, .movie, .video, .mpeg4Movie]
+				
+				openPanel.begin { response in
+						if response == .OK {
+								completionHandler(openPanel.urls)
+						} else {
+								completionHandler(nil)
+						}
 				}
 		}
 }
