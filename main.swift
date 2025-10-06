@@ -17,7 +17,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigati
 						defer: false
 				)
 				window.center()
-				window.title = "Flickr"
+				window.title = NSLocalizedString("window.title", comment: "")
 				window.delegate = self
 
 				// WebView konfigurieren
@@ -58,9 +58,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigati
 				let appMenuItem = NSMenuItem()
 				mainMenu.addItem(appMenuItem)
 				let appMenu = NSMenu()
-				appMenu.addItem(withTitle: "Upload", action: #selector(openCompose), keyEquivalent: "u")
+				appMenu.addItem(withTitle: NSLocalizedString("menu.upload", comment: ""), action: #selector(openCompose), keyEquivalent: "u")
 				appMenu.addItem(NSMenuItem.separator())
-				appMenu.addItem(withTitle: "Beenden Flickr", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+				appMenu.addItem(withTitle: NSLocalizedString("menu.quit", comment: ""), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 				appMenuItem.submenu = appMenu
 
 				let editMenuItem = NSMenuItem()
@@ -145,6 +145,105 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigati
 								completionHandler(openPanel.urls)
 						} else {
 								completionHandler(nil)
+						}
+				}
+		}
+		
+		// MARK: - Download Handling
+		func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse,
+								 decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+				
+				guard let url = navigationResponse.response.url else {
+						decisionHandler(.allow)
+						return
+				}
+				
+				let urlString = url.absoluteString
+				
+				// Download-Links abfangen
+				if urlString.contains("photo_download.gne") {
+						decisionHandler(.cancel)
+						downloadFile(from: url, webView: webView)
+						return
+				}
+				
+				decisionHandler(.allow)
+		}
+		
+		func downloadFile(from url: URL, webView: WKWebView) {
+				// Dateinamen aus URL-Parametern extrahieren
+				var filename = "flickr_photo"
+				var sizeLabel = ""
+				
+				if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+					 let queryItems = components.queryItems {
+						
+						// ID aus URL holen
+						if let id = queryItems.first(where: { $0.name == "id" })?.value {
+								filename = id
+						}
+						
+						// Size-Parameter holen
+						if let size = queryItems.first(where: { $0.name == "size" })?.value {
+								switch size {
+								case "q": sizeLabel = "_square"
+								case "w": sizeLabel = "_small"
+								case "c": sizeLabel = "_medium"
+								case "k": sizeLabel = "_large"
+								case "6k": sizeLabel = "_xlarge"
+								case "o": sizeLabel = "_original"
+								default: sizeLabel = ""
+								}
+						}
+				}
+				
+				let fullFilename = "\(filename)\(sizeLabel).jpg"
+				
+				// Cookies aus WebView holen
+				webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { cookies in
+						DispatchQueue.main.async {
+								let savePanel = NSSavePanel()
+								savePanel.nameFieldStringValue = fullFilename
+								savePanel.canCreateDirectories = true
+								savePanel.allowedContentTypes = [.jpeg, .png, .image]
+								
+								savePanel.begin { response in
+										if response == .OK, let destinationURL = savePanel.url {
+												// URLSession mit WebView-Cookies konfigurieren
+												let config = URLSessionConfiguration.default
+												let cookieStorage = HTTPCookieStorage.shared
+												
+												// Cookies setzen
+												for cookie in cookies {
+														cookieStorage.setCookie(cookie)
+												}
+												config.httpCookieStorage = cookieStorage
+												
+												let session = URLSession(configuration: config)
+												
+												session.downloadTask(with: url) { tempURL, response, error in
+														guard let tempURL = tempURL, error == nil else {
+																print("Download Error: \(error?.localizedDescription ?? "unknown")")
+																return
+														}
+														
+														// Echte Dateiendung aus MIME-Type ermitteln
+														var finalURL = destinationURL
+														if let mimeType = (response as? HTTPURLResponse)?.mimeType {
+																if mimeType.contains("png") {
+																		finalURL = destinationURL.deletingPathExtension().appendingPathExtension("png")
+																}
+														}
+														
+														do {
+																try FileManager.default.moveItem(at: tempURL, to: finalURL)
+																print("Download erfolgreich: \(finalURL.path)")
+														} catch {
+																print("Fehler beim Speichern: \(error)")
+														}
+												}.resume()
+										}
+								}
 						}
 				}
 		}
